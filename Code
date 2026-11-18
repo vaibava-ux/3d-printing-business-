@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Print Shop Order Manager</title>
+    <style>
+        :root {
+            --bg: #f4f6f9;
+            --card: #ffffff;
+            --text: #1e293b;
+            --muted: #64748b;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --border: #e2e8f0;
+            --pending: #f59e0b;
+            --printing: #3b82f6;
+            --post: #8b5cf6;
+            --done: #10b981;
+        }
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 1100px; margin: 0 auto; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+        h1 { margin: 0; font-size: 1.6rem; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: var(--card); padding: 16px; border-radius: 10px; border: 1px solid var(--border); }
+        .stat-card h3 { margin: 0 0 8px 0; font-size: 0.85rem; color: var(--muted); text-transform: uppercase; }
+        .stat-card p { margin: 0; font-size: 1.8rem; font-weight: 700; }
+        .card { background: var(--card); padding: 20px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 24px; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+        input, select, button { padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.95rem; }
+        input:focus, select:focus { outline: 2px solid var(--primary); border-color: transparent; }
+        button.primary { background: var(--primary); color: white; border: none; font-weight: 600; cursor: pointer; }
+        button.primary:hover { background: var(--primary-hover); }
+        button.secondary { background: white; color: var(--text); cursor: pointer; }
+        button.secondary:hover { background: #f8fafc; }
+        button.delete { background: #fee2e2; color: #b91c1c; border: none; padding: 6px 10px; cursor: pointer; font-size: 0.85rem; }
+        button.delete:hover { background: #fecaca; }
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border); font-size: 0.92rem; }
+        th { color: var(--muted); font-weight: 600; }
+        .badge { padding: 4px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; color: white; display: inline-block; }
+        .status-Pending { background: var(--pending); }
+        .status-Printing { background: var(--printing); }
+        .status-Post-Processing { background: var(--post); }
+        .status-Completed { background: var(--done); }
+        @media (max-width: 768px) {
+            table, thead, tbody, th, td, tr { display: block; }
+            thead { display: none; }
+            tr { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; padding: 10px; }
+            td { border: none; padding: 6px 0; display: flex; justify-content: space-between; }
+            td::before { content: attr(data-label); font-weight: 600; color: var(--muted); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>3D Print Order Tracker</h1>
+            <button class="secondary" onclick="exportCSV()">Export to CSV</button>
+        </header>
+
+        <div class="stats">
+            <div class="stat-card"><h3>Pending / Queue</h3><p id="stat-pending">0</p></div>
+            <div class="stat-card"><h3>Active Printing</h3><p id="stat-printing">0</p></div>
+            <div class="stat-card"><h3>Post-Processing</h3><p id="stat-post">0</p></div>
+            <div class="stat-card"><h3>Completed</h3><p id="stat-completed">0</p></div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-top:0; font-size:1.1rem;">Add New Print Order</h2>
+            <form id="order-form" class="form-grid">
+                <input type="text" id="customer" placeholder="Customer Name" required>
+                <input type="text" id="model" placeholder="Part / Model Name" required>
+                <input type="text" id="filament" placeholder="Filament (e.g., PLA Black)" required>
+                <input type="text" id="printTime" placeholder="Est. Time (e.g., 4h 30m)" required>
+                <input type="date" id="dueDate" required>
+                <button type="submit" class="primary">Add Order</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <div class="toolbar">
+                <h2 style="margin:0; font-size:1.1rem;">Order Queue</h2>
+                <div style="display:flex; gap:10px;">
+                    <input type="text" id="search" placeholder="Search customer or model..." oninput="renderOrders()">
+                    <select id="filterStatus" onchange="renderOrders()">
+                        <option value="All">All Statuses</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Printing">Printing</option>
+                        <option value="Post-Processing">Post-Processing</option>
+                        <option value="Completed">Completed</option>
+                    </select>
+                </div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Customer</th>
+                        <th>Model / Part</th>
+                        <th>Filament</th>
+                        <th>Est. Time</th>
+                        <th>Due Date</th>
+                        <th>Stage</th>
+                        <th>Update Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="order-list"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let orders = JSON.parse(localStorage.getItem('printOrders')) || [
+            { id: 1, customer: "Alex M.", model: "Articulated Dragon", filament: "Silk PLA Gold", printTime: "6h 15m", dueDate: "2026-11-22", status: "Printing" },
+            { id: 2, customer: "Samira K.", model: "Custom Desk Organizer", filament: "PETG Matte Black", printTime: "3h 45m", dueDate: "2026-11-25", status: "Pending" }
+        ];
+
+        function saveOrders() {
+            localStorage.setItem('printOrders', JSON.stringify(orders));
+            renderOrders();
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, tag => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+            }[tag]));
+        }
+
+        document.getElementById('order-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const newOrder = {
+                id: Date.now(),
+                customer: document.getElementById('customer').value.trim(),
+                model: document.getElementById('model').value.trim(),
+                filament: document.getElementById('filament').value.trim(),
+                printTime: document.getElementById('printTime').value.trim(),
+                dueDate: document.getElementById('dueDate').value,
+                status: "Pending"
+            };
+            orders.unshift(newOrder);
+            this.reset();
+            saveOrders();
+        });
+
+        function updateStatus(id, newStatus) {
+            const order = orders.find(o => o.id === id);
+            if (order) {
+                order.status = newStatus;
+                saveOrders();
+            }
+        }
+
+        function deleteOrder(id) {
+            orders = orders.filter(o => o.id !== id);
+            saveOrders();
+        }
+
+        function renderOrders() {
+            const filter = document.getElementById('filterStatus').value;
+            const search = document.getElementById('search').value.toLowerCase();
+            const tbody = document.getElementById('order-list');
+            tbody.innerHTML = '';
+
+            document.getElementById('stat-pending').textContent = orders.filter(o => o.status === 'Pending').length;
+            document.getElementById('stat-printing').textContent = orders.filter(o => o.status === 'Printing').length;
+            document.getElementById('stat-post').textContent = orders.filter(o => o.status === 'Post-Processing').length;
+            document.getElementById('stat-completed').textContent = orders.filter(o => o.status === 'Completed').length;
+
+            const filtered = orders.filter(o => {
+                const matchesStatus = filter === 'All' || o.status === filter;
+                const matchesSearch = o.customer.toLowerCase().includes(search) || o.model.toLowerCase().includes(search) || o.filament.toLowerCase().includes(search);
+                return matchesStatus && matchesSearch;
+            });
+
+            filtered.forEach(order => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td data-label="Customer"><strong>${escapeHTML(order.customer)}</strong></td>
+                    <td data-label="Model">${escapeHTML(order.model)}</td>
+                    <td data-label="Filament">${escapeHTML(order.filament)}</td>
+                    <td data-label="Est. Time">${escapeHTML(order.printTime)}</td>
+                    <td data-label="Due Date">${escapeHTML(order.dueDate)}</td>
+                    <td data-label="Stage"><span class="badge status-${order.status}">${order.status}</span></td>
+                    <td data-label="Update">
+                        <select onchange="updateStatus(${order.id}, this.value)">
+                            <option value="Pending" ${order.status === 'Pending' ? 'selected' : ''}>Pending</option>
+                            <option value="Printing" ${order.status === 'Printing' ? 'selected' : ''}>Printing</option>
+                            <option value="Post-Processing" ${order.status === 'Post-Processing' ? 'selected' : ''}>Post-Processing</option>
+                            <option value="Completed" ${order.status === 'Completed' ? 'selected' : ''}>Completed</option>
+                        </select>
+                    </td>
+                    <td data-label="Action"><button class="delete" onclick="deleteOrder(${order.id})">Delete</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function exportCSV() {
+            const headers = ["Customer", "Model", "Filament", "Est. Time", "Due Date", "Status"];
+            const rows = orders.map(o => [o.customer, o.model, o.filament, o.printTime, o.dueDate, o.status].map(v => `"${v.replace(/"/g, '""')}"`).join(","));
+            const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
+            const link = document.createElement("a");
+            link.setAttribute("href", encodeURI(csvContent));
+            link.setAttribute("download", "3d_print_orders.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        renderOrders();
+    </script>
+</body>
+</html>
